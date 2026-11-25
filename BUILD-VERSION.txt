@@ -1,8 +1,3 @@
-Warda Stock Book 1.8.4 + BI Hub / Theme Upgrade (25 Nov 2026)
-Base application: StockBook-Netlify-v1.8.4-Redirect-Loop-Fix.zip
-New main-system additions:
-- Four-pillar Business Intelligence overview: Sales Performance, Product Intelligence, Financial Intelligence, Market Intelligence.
-- Category performance breakdown: Clothing, Shoes, Accessories, Cosmetics, Hair, Other.
-- Internal category demand comparison against the previous equal-length period.
-- New professional Analytics Light (default), Analytics Dark, Finance, and Retail BI themes.
-- Named theme presets retained, plus custom image/JSON palette upload.
+Warda Stock Book 1.8.5 (25 Nov 2026)
+Fixes: dead buttons, catalog stock after BILLZ sales, new per-product Telegram Report button.
+See CHANGES-2026-11-25-BUTTONS-STOCK-REPORT.txt

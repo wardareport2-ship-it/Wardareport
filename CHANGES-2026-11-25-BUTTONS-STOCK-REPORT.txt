@@ -1,0 +1,7 @@
+1. index.html  Dead buttons: click handler matched <html data-fx="on">, swallowing every click. Now limited to the Style panel (#fly).
+2. index.html  variantForSale lookups stored undefined for barcode/productId -> BILLZ sales never matched by barcode. Fixed.
+3. index.html  stockOf(): old unmatched BILLZ sales (ns) are re-matched to real variants and now reduce stock. Unmatchable ones stay unattributed.
+4. index.html  loadSales(): duplicate check uses the same matching, so re-sync cannot count a sale twice.
+5. index.html  New "Report" button (catalog row + product panel) -> builds KK-8 style report -> POST /.netlify/functions/product-report
+6. NEW netlify/functions/product-report.mjs  verifies Firebase login, sends to the saved Telegram chat (same as daily report).
+AFTER DEPLOY: run BILLZ sync again over the affected dates so previously skipped sales are saved.

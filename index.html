@@ -746,14 +746,19 @@ const vk=x=>[x.sku||x.art||x.bc||(x.productId?'id:'+String(x.productId):''),x.co
 const SZ=['xxs','xs','s','m','l','xl','xxl','xxxl','2xl','3xl'];
 const szKey=v=>{const t=String(v||'').toLowerCase().trim(),i=SZ.indexOf(t);if(i>=0)return[0,i,''];const n=parseFloat(t);return isNaN(n)?[2,0,t]:[1,n,t]};
 const szCmp=(a,b)=>{const x=szKey(a),y=szKey(b);return x[0]-y[0]||x[1]-y[1]||x[2].localeCompare(y[2])};
+let _lastOrphans=[];
 function stockOf(moves){
- const m={};
+ const m={},nsSales=[];
  for(const x of [...moves].reverse()){
   if(x.ns&&!(x.sku||x.art||x.bc||x.productId))continue;
+  /* BILLZ sale lines that could not be matched when they were saved are kept as 'ns' (no stock effect).
+     They are re-matched below against the real variants so imported pieces are really reduced. */
+  if(x.ns&&x.type==='out'&&(x.note==='Billz sync'||String(x.bz||'').startsWith('nightly-sale|'))){nsSales.push(x);continue}
   const k=vk(x),s=m[k]||(m[k]={k,loc:{},ts:0,ph:!!x.ns});if(!x.ns)s.ph=false;
   if(!x.ns||s.ph)for(const f of[...FL,'photo'])if(x[f])s[f]=x[f];
   if(x.parent_id)s.parent_id=x.parent_id;if(x.productId)s.productId=x.productId;
   s.ts=Math.max(s.ts,x.ts||0);const a=(l,v)=>s.loc[l]=(s.loc[l]||0)+v;
+  if(!x.ns){const q0=+x.qty||0;if(x.type==='in'){s.inQ=(s.inQ||0)+q0;const z=x.to||'Main';(s.inBy=s.inBy||{})[z]=(s.inBy[z]||0)+q0}else if(x.type==='out'){(s.outBy=s.outBy||{})[x.from]=(s.outBy[x.from]||0)+q0}else if(x.type==='rem'){s.remQ=(s.remQ||0)+q0}}
   if(x.ns){}else if(x.type==='in')a(x.to||'Main',x.qty);else if(x.type==='move'){a(x.from,-x.qty);a(x.to,x.qty)}else if(x.type==='out'||x.type==='rem')a(x.from,-x.qty);
  }
  const M=bzm();
@@ -787,6 +792,22 @@ function stockOf(moves){
   }else{
    const k=vk(v),seed={...v,k,loc:{},ts:0,ph:true,billz:true,billzLoc:v.billzLoc||{},billzPrices:v.billzPrices||{},neg:{}};m[k]=seed;index(seed);
   }
+ }
+ _lastOrphans=[];
+ if(nsSales.length){
+  const real=v=>!!v&&!(v.ph&&!v.billz);
+  const resolve=x=>{
+   const pid=x.productId||x.product_id;let s=pid?byID.get(String(pid)):null;if(!real(s))s=null;
+   if(!s&&x.bc){s=byBC.get(String(x.bc));if(!real(s))s=null}
+   if(!s){const e=byKey.get(vk(x));if(real(e))s=e}
+   if(!s){const sk=String(x.sku||x.art||'');if(sk){const c=(bySku.get(sk)||[]).filter(v=>real(v)&&(!x.color||!v.color||norm(v.color)===norm(x.color))&&(!x.size||!v.size||norm(v.size)===norm(x.size)));if(c.length===1)s=c[0]}}
+   return s||null};
+  // Undo the temporary clamp to 0 so a variant is judged on its real balance after the extra sales.
+  for(const s of Object.values(m))for(const z in s.neg)s.loc[z]=(s.loc[z]||0)+s.neg[z];
+  for(const x of nsSales){const s=resolve(x),q=+x.qty||0;
+   if(s){s.loc[x.from]=(s.loc[x.from]||0)-q;(s.outBy=s.outBy||{})[x.from]=(s.outBy[x.from]||0)+q;s.ts=Math.max(s.ts,x.ts||0)}
+   else{_lastOrphans.push(x);const k=vk(x),o=m[k]||(m[k]={k,loc:{},ts:0,ph:true,neg:{}});if(o.ph)for(const f of[...FL,'photo'])if(x[f])o[f]=x[f];if(x.parent_id)o.parent_id=x.parent_id;if(x.productId)o.productId=x.productId;o.ts=Math.max(o.ts,x.ts||0)}}
+  for(const s of Object.values(m)){s.neg={};for(const z in s.loc)if(s.loc[z]<0){s.neg[z]=s.loc[z];s.loc[z]=0}}
  }
  return m
 }
@@ -1024,6 +1045,43 @@ const qtd=q=>`<td class="q${q===0?' z':''}${q<0?' bad':''}">${q} pcs</td>`;
 const uniqP=f=>[...new Set(TREE.map(p=>p[f]).filter(Boolean))].sort();
 const mvBtn=k=>`<button class="btn sm mv" data-k="${esc(k)}">Transfer</button>`;
 
+
+/* ---------- per-product sales report (sent to Telegram) ---------- */
+const REPORT_COLORS=[[/black|чер|qora|noir/,'Qora','⚫'],[/dark.?blue|navy|темно.?син|to.?q.?(siniy|ko)/,'To‘q siniy','🔵'],[/light.?blue|голуб|havo/,'Havorang','🔵'],[/blue|син|siniy|ko.k/,'Siniy','🔵'],[/white|бел|^oq$|oq /,'Oq','⚪'],[/beige|беж|^bej/,'Beji','🤎'],[/brown|коричн|korich|jigar/,'Korichniviy','🟤'],[/dark.?gr[ae]y|темно.?сер/,'To‘q kulrang','🩶'],[/gr[ae]y|сер|kulrang/,'Kulrang','🩶'],[/burgundy|бордо|bordo/,'Bordo','🟥'],[/red|красн|qizil/,'Qizil','🔴'],[/green|зел|yashil/,'Yashil','🟢'],[/khaki|хаки|xaki/,'Xaki','🟢'],[/pink|роз|pushti/,'Pushti','🩷'],[/purple|фиолет|binafsha|lilac|лил/,'Binafsha','🟣'],[/yellow|желт|жёлт|sariq/,'Sariq','🟡'],[/orange|оранж/,'Apelsin','🟠'],[/cream|крем|молоч|ivory|айвори|ayvori/,'Krem','🤍']];
+const reportColor=c=>{const t=String(c||'').toLowerCase().replace(/ё/g,'е').trim();if(!t)return['Rangsiz','▫️'];for(const[re,n,e]of REPORT_COLORS)if(re.test(t))return[n,e];return[String(c).trim(),'▫️']};
+function productReportText(p){
+ refreshRenderModel();
+ const vs=p.vars,sum=(f)=>vs.reduce((a,v)=>a+f(v),0),soldOf=v=>Object.values(v.outBy||{}).reduce((a,b)=>a+b,0);
+ const stores=STORES.filter(z=>vs.some(v=>(v.outBy&&v.outBy[z]!==undefined)||(v.inBy&&v.inBy[z])||(v.loc[z]||0)>0));
+ const groups=new Map();
+ for(const v of vs){const [n,e]=reportColor(v.color),g=groups.get(n)||groups.set(n,{n,e,imp:0,by:{},sold:0}).get(n);g.imp+=v.inQ||0;for(const z of stores){g.by[z]=(g.by[z]||0)+((v.outBy&&v.outBy[z])||0)}g.sold+=soldOf(v)}
+ const G=[...groups.values()].sort((a,b)=>b.sold-a.sold||b.imp-a.imp);
+ const kirim=sum(v=>v.inQ||0),sotuv=sum(soldOf),qoldiq=sum(v=>STORES.reduce((a,z)=>a+(v.loc[z]||0),0));
+ const pct=kirim>0?(sotuv/kirim*100).toFixed(1).replace('.',','):'0';
+ const model=String(p.sku||p.art||p.name||'Mahsulot').toUpperCase();
+ const L=['📊 '+model+' MODELI — SOTUV HISOBOTI','','Umumiy ko‘rsatkichlar:','','- 📦 Jami kirim: '+kirim+' dona','- 🛍 Jami sotuv: '+sotuv+' dona','- 📊 Qoldiq: '+qoldiq+' dona','- Sotilish darajasi: '+pct+'%','','Ranglar bo‘yicha sotuv:',''];
+ for(const g of G){L.push(g.e+' '+g.n,'','- Kirim: '+g.imp+' dona');
+  if(g.sold>0){for(const z of stores)L.push('- '+z+': '+(g.by[z]||0));L.push('- Jami sotuv: '+g.sold+' dona')}else L.push('- Sotuv: 0 dona','- Sotilmagan');
+  L.push('')}
+ const sold=G.filter(g=>g.sold>0),top=sold.length?sold[0].sold:0,tops=sold.filter(g=>g.sold===top),rest=sold.filter(g=>g.sold<top),none=G.filter(g=>g.sold===0);
+ L.push('📈 Xulosa:','');
+ if(tops.length){const nm=tops.map(g=>g.n);L.push('- Eng ko‘p sotilgan '+(nm.length>1?'ranglar: '+nm.slice(0,-1).join(', ')+' va '+nm[nm.length-1]+' — har biri '+top+' donadan.':'rang: '+nm[0]+' — '+top+' dona.'))}else L.push('- Hali sotuv bo‘lmagan.');
+ rest.forEach(g=>L.push('- '+g.n+' rangidan '+g.sold+' dona sotilgan.'));
+ none.forEach(g=>L.push('- '+g.n+' rangidan hali sotuv bo‘lmagan.'));
+ const sk=String(p.sku||p.art||'').toLowerCase(),orph=sk?_lastOrphans.filter(x=>String(x.sku||x.art||'').toLowerCase()===sk&&x.type==='out').reduce((a,x)=>a+(+x.qty||0),0):0;
+ if(orph>0)L.push('- ⚠️ Rangi/o‘lchami aniqlanmagan sotuv: '+orph+' dona (yuqoridagi jadvalga kirmagan).');
+ L.push('- Jami '+qoldiq+' dona mahsulot qoldiq');
+ return L.join('\n')}
+async function sendProductReport(k,btn){
+ const p=TREE.find(x=>x.k===k);if(!p)return;const old=btn?btn.textContent:'';
+ if(btn){btn.disabled=true;btn.textContent='Sending…'}
+ let msg='';
+ try{const u=auth.currentUser;if(!u)throw new Error('Please sign in again.');
+  const r=await fetch('/.netlify/functions/product-report',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await u.getIdToken()},body:JSON.stringify({text:productReportText(p),model:String(p.sku||p.art||p.name||'')})});
+  const j=await r.json().catch(()=>({}));if(!r.ok||!j.ok)throw new Error(j.error||('Server error '+r.status));msg='Sent ✓'}
+ catch(e){msg='Failed';alert('Report was not sent: '+(e&&e.message||e))}
+ if(btn){btn.textContent=msg;setTimeout(()=>{btn.textContent=old;btn.disabled=false},2200)}}
+
 function catRows(L){let z=0,h='';
  for(const [p,q] of L){
   const key='p:'+p.k,vs=[...p.vars].sort((a,b)=>String(a.color||'').localeCompare(String(b.color||''),'ru')||szCmp(a.size,b.size)||String(a.bc||'').localeCompare(String(b.bc||''))),
@@ -1032,7 +1090,7 @@ function catRows(L){let z=0,h='';
    photo=p.photo||(vs.find(v=>v.photo)||{}).photo||'',article=p.sku||p.art||'-';
   const colorPreview=colors.length?`<div class="cat-color-preview" aria-label="Available colors">${colors.slice(0,5).map(c=>`<span class="cat-color-chip" title="${esc(c)}">${colorSwatch(c)}<span>${esc(c)}</span></span>`).join('')}${colors.length>5?`<span class="cat-more-colors">+${colors.length-5}</span>`:''}</div>`:`<div class="mu cat-color-preview">${vs.some(v=>['clothing','footwear'].includes(itemKind(v)))?'Color needs checking':'Color not supplied'}</div>`;
   h+=`<tr class="r z${z++%2}${hasVariants?' variant-parent':''}"><td></td><td>${thumb(photo)}</td><td class="nm"><div class="cat-product-title">${hasVariants?`<button type="button" class="variant-toggle" data-tog="${esc(key)}" aria-label="${o?'Hide':'Show'} variations for ${esc(name)}" aria-expanded="${o?'true':'false'}" title="${o?'Hide':'Show'} colors and sizes">${CHV(o)}</button>`:'<span class="variant-spacer"></span>'}<span class="plink" data-prod="${esc(p.k)}">${esc(name)}</span>${hasVariants?`<span class="variant-count">${vs.length} variants</span>`:''}</div>${colorPreview}${hasVariants&&sizes.length?`<div class="mu cat-variant-note">${colors.length} color${colors.length===1?'':'s'} · ${sizes.length} size${sizes.length===1?'':'s'}</div>`:''}</td>`
-   +`<td>${esc(article)}</td><td class="hm">${esc(p.bc||'-')}</td><td class="hm">${esc(p.cat||'-')}</td><td class="hm">${esc(p.brand||'-')}</td>${qtd(q)}<td>${!hasVariants&&vs.length?mvBtn(vs[0].k):''}</td></tr>`;
+   +`<td>${esc(article)}</td><td class="hm">${esc(p.bc||'-')}</td><td class="hm">${esc(p.cat||'-')}</td><td class="hm">${esc(p.brand||'-')}</td>${qtd(q)}<td>${!hasVariants&&vs.length?mvBtn(vs[0].k)+' ':''}<button type="button" class="btn sm" data-preport="${esc(p.k)}" title="Send this product's sales report to Telegram">Report</button></td></tr>`;
   if(!o)continue;
   for(const v of vs){
    const vColor=String(v.color||'').trim(),vSize=String(v.size||'').trim(),kind=itemKind(v),
@@ -1221,6 +1279,8 @@ async function readSales(file){if(!/\.(xlsx|xls|xlsm|xlsb)$/i.test(file.name))th
 let soLines=[],soSk=[],soFile='',soInfo='';
 function openNSO(){prevView=view==='nso'?'out':view;soLines=[];soSk=[];soFile='';soInfo='';$('#smsg').textContent='';$('#sprev').innerHTML='';go('nso')}
 function soIndex(){const bc={},art={},pid={};for(const v of Object.values(STK)){if(v.ph&&!v.billz)continue;if(v.productId)pid[String(v.productId)]=v;if(v.bc&&!bc[v.bc])bc[v.bc]=v;for(const a of new Set([v.sku,v.art].filter(Boolean).map(x=>x.toLowerCase())))(art[a]=art[a]||[]).push(v)}return{bc,art,pid}}
+/* Same matching rules as stockOf() uses for old unmatched BILLZ sales, so re-syncing never counts a sale twice. */
+function nsResolvedKey(x,ix,nsK){const pid=x.productId||x.product_id;let v=pid&&ix.pid[String(pid)]||null;if(!v&&x.bc)v=ix.bc[String(x.bc)]||null;if(!v){const e=STK[vk(x)];if(e&&!(e.ph&&!e.billz))v=e}if(!v){const a=String(x.sku||x.art||'').toLowerCase(),L=a&&ix.art[a]||[],nm=t=>String(t||'').trim().toLowerCase(),c=L.filter(q=>(!x.color||!q.color||nm(q.color)===nm(x.color))&&(!x.size||!q.size||nm(q.size)===nm(x.size)));if(c.length===1)v=c[0]}return v?v.k:nsK(x)}
 function soMatch(r,ix){const pid=r.productId||r.product_id||r.pid;if(pid&&ix.pid[String(pid)])return ix.pid[String(pid)];const v=variantForSale({product_id:pid,productId:pid,bc:r.bc,sku:r.sku||'',art:r.art||'',color:r.color||'',size:r.size||''});if(v)return v;const a=(r.art||r.sku||'').toLowerCase();if(a&&ix.art[a]){const L=ix.art[a];return L.length===1?L[0]:'many'}return null}
 function renderNSO(){const run={},by={};let nS=0,nR=0;
  soLines.forEach(l=>{const sold=l.soldQty!=null?Math.max(0,+l.soldQty||0):Math.max(0,+l.qty||0),returned=l.returnedQty!=null?Math.max(0,+l.returnedQty||0):Math.max(0,-(+l.qty||0));if(l.ns){l.av=0;l.short=false;if(returned)nR++;by[l.store]=(by[l.store]||0)+l.qty;return}const k=l.k+'|'+l.store,have=k in run?run[k]:((STK[l.k]&&STK[l.k].loc[l.store])||0);l.av=Math.max(0,have);l.short=sold>0&&have<sold;run[k]=have-sold+returned;if(l.short)nS++;if(returned)nR++;by[l.store]=(by[l.store]||0)+l.qty});
@@ -1247,7 +1307,7 @@ async function loadSales(f,redir,pre){let rows;
  /* Reconcile gross sold and returns separately. This also repairs older net-only Billz rows without deleting history. */
  const nsK=x=>'ns|'+(x.productId||x.bc||x.art||x.sku||x.name||'').toLowerCase(),sg=(st,d,k,se)=>[st,d,k,se||''].join('|'),have={};
  const bucket=g=>have[g]||(have[g]={sold:0,returned:0}),billzSource=String(f&&f.name||'').toLowerCase()==='billz';
- live().forEach(x=>{if(x.type!=='out'||(billzSource&&!(x.note==='Billz sync'||String(x.bz||'').startsWith('nightly-sale|'))))return;const g=sg(x.from,x.date,x.ns?nsK(x):vk(x),x.seller),h=bucket(g),q=+x.qty||0;if(q<0||x.ret)h.returned+=Math.abs(q);else h.sold+=q});
+ live().forEach(x=>{if(x.type!=='out'||(billzSource&&!(x.note==='Billz sync'||String(x.bz||'').startsWith('nightly-sale|'))))return;const g=sg(x.from,x.date,x.ns?nsResolvedKey(x,ix,nsK):vk(x),x.seller),h=bucket(g),q=+x.qty||0;if(q<0||x.ret)h.returned+=Math.abs(q);else h.sold+=q});
  soLines.forEach(l=>{const g=sg(l.store,l.date,l.k,l.seller),h=bucket(g);h.sold+=Math.max(0,+l.soldQty||0);h.returned+=Math.max(0,+l.returnedQty||0)});
  let dup=0,dupQ=0;
  const keep=add.filter(l=>{const g=sg(l.store,l.date,l.k,l.seller),h=have[g]||{sold:0,returned:0},sourceSold=Math.max(0,+l.soldQty||0),sourceRet=Math.max(0,+l.returnedQty||0),dSold=sourceSold-h.sold,dRet=sourceRet-h.returned;
@@ -1521,7 +1581,7 @@ function renderPnl(force){const d=$('#pnl'),p=pk&&TREE.find(x=>x.k===pk);
   h=`<div class="product-detail-hero"><div class="product-detail-photo">${p.photo?`<img class="product-main-photo" src="${esc(p.photo)}" alt="${nm}" loading="eager">`:`<div class="mu">No product photo</div>`}</div><div class="product-detail-summary"><button class="btn rnd product-detail-close" data-pclose aria-label="Close">${ICX}</button><h3>${nm}</h3><div class="mu">${meta(p)}</div><div class="pg" style="margin-top:10px">${pr('SKU',p.sku)+pr('Article',p.art)+pr('Brand',p.brand)+pr('Category',p.cat)}</div><div class="mu" style="margin-top:12px">Product overview · Stock Book movement history</div></div></div>${msg}`
    +`<div class="st">${tl('In stock',stock)+tl('Imported',imp)+tl('Transferred',trn)+tl('Sold',sold)+tl('Removed',rem)+tl('Sell-through',sellThrough.toFixed(1)+'%')}</div>`
    +`<div class="card" style="margin-top:12px"><div class="ln"><h3>Store performance</h3><span class="mu">All recorded dates</span></div><div class="tw"><table class="sm"><thead><tr><th>Store</th><th>Imported</th><th>Sold</th><th>Removed</th><th>In stock</th><th>Sell-through</th></tr></thead><tbody>${storeMoves.map((x,i)=>`<tr class="r z${i%2}"><td><b>${esc(x.z)}</b></td><td>${nf(x.imported)}</td><td><b>${nf(x.sold)}</b></td><td>${nf(x.removed)}</td><td>${nf(x.current)}</td><td>${x.imported?x.rate.toFixed(1)+'%':'—'}</td></tr>`).join('')}<tr class="r"><td><b>Total</b></td><td><b>${nf(imp)}</b></td><td><b>${nf(sold)}</b></td><td><b>${nf(rem)}</b></td><td><b>${nf(stock)}</b></td><td><b>${imp?sellThrough.toFixed(1)+'%':'—'}</b></td></tr></tbody></table></div><div class="mu" style="margin-top:8px">Sell-through = recorded sold units ÷ recorded imported units. Transfers are shown separately and are not counted as sales.</div><div class="mu" style="margin-top:6px">Data check: figures use non-deleted movement records currently saved in Stock Book. Complete the BILLZ sync and compare the selected product before treating this as a final reconciliation.</div></div>`
-   +(()=>{const ev=lv.filter(x=>['in','out'].includes(x.type)&&!x.ns),byDay={};ev.forEach(x=>{const dt=mdate(x),o=byDay[dt]||(byDay[dt]={date:dt,sold:0,imported:0});if(x.type==='out')o.sold+=+x.qty||0;else o.imported+=+x.qty||0});const days=Object.values(byDay).sort((a,b)=>a.date.localeCompare(b.date)).slice(-14),mx=Math.max(1,...days.flatMap(x=>[x.sold,x.imported]));return `<div class="card" style="margin-top:12px"><div class="ln"><h3>Product performance</h3><div class="product-performance-actions"><button class="btn sm" id="p-export">Download product Excel</button><button class="btn sm" id="p-print">Print / Save PDF</button></div></div><div class="mu">Daily units sold and imported · last 14 active dates</div>${days.length?`<div style="display:flex;align-items:flex-end;gap:7px;height:150px;padding:12px 2px 0;overflow-x:auto">${days.map(x=>`<div title="${x.date}: sold ${x.sold}, imported ${x.imported}" class="sa-pday" style="min-width:28px;flex:1;display:flex;align-items:flex-end;justify-content:center;gap:5px;height:125px;border-bottom:1px solid var(--bd)"><i class="sa-product-bar sa-product-bar-sold" style="width:10px;height:${Math.max(x.sold?3:0,x.sold/mx*100)}%;background:var(--ac);border-radius:2px 2px 0 0"></i><i class="sa-product-bar sa-product-bar-imported" style="width:10px;height:${Math.max(x.imported?3:0,x.imported/mx*100)}%;background:var(--s2);border-radius:2px 2px 0 0"></i></div>`).join('')}</div><div class="mu" style="margin-top:8px"><span style="color:var(--ac)">● Sold</span> &nbsp; <span style="color:var(--s2)">● Imported</span></div><div class="tw" style="margin-top:10px"><table class="sm"><thead><tr><th>Date</th><th>Store</th><th>Activity</th><th>Qty</th></tr></thead><tbody>${ev.slice().sort((a,b)=>b.date.localeCompare(a.date)||b.ts-a.ts).slice(0,20).map(x=>`<tr class="r"><td>${esc(mdate(x))}</td><td>${esc(x.type==='in'?x.to:x.from||'-')}</td><td>${x.type==='in'?'Imported':'Sold'}${x.color?' · '+esc(x.color):''}${x.size?' · '+esc(x.size):''}</td><td>${+x.qty||0}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No product sales or imports recorded yet.</div>'}</div>`})()
+   +(()=>{const ev=lv.filter(x=>['in','out'].includes(x.type)&&!x.ns),byDay={};ev.forEach(x=>{const dt=mdate(x),o=byDay[dt]||(byDay[dt]={date:dt,sold:0,imported:0});if(x.type==='out')o.sold+=+x.qty||0;else o.imported+=+x.qty||0});const days=Object.values(byDay).sort((a,b)=>a.date.localeCompare(b.date)).slice(-14),mx=Math.max(1,...days.flatMap(x=>[x.sold,x.imported]));return `<div class="card" style="margin-top:12px"><div class="ln"><h3>Product performance</h3><div class="product-performance-actions"><button class="btn sm" id="p-export">Download product Excel</button><button class="btn sm" data-preport="${esc(p.k)}">Report</button><button class="btn sm" id="p-print">Print / Save PDF</button></div></div><div class="mu">Daily units sold and imported · last 14 active dates</div>${days.length?`<div style="display:flex;align-items:flex-end;gap:7px;height:150px;padding:12px 2px 0;overflow-x:auto">${days.map(x=>`<div title="${x.date}: sold ${x.sold}, imported ${x.imported}" class="sa-pday" style="min-width:28px;flex:1;display:flex;align-items:flex-end;justify-content:center;gap:5px;height:125px;border-bottom:1px solid var(--bd)"><i class="sa-product-bar sa-product-bar-sold" style="width:10px;height:${Math.max(x.sold?3:0,x.sold/mx*100)}%;background:var(--ac);border-radius:2px 2px 0 0"></i><i class="sa-product-bar sa-product-bar-imported" style="width:10px;height:${Math.max(x.imported?3:0,x.imported/mx*100)}%;background:var(--s2);border-radius:2px 2px 0 0"></i></div>`).join('')}</div><div class="mu" style="margin-top:8px"><span style="color:var(--ac)">● Sold</span> &nbsp; <span style="color:var(--s2)">● Imported</span></div><div class="tw" style="margin-top:10px"><table class="sm"><thead><tr><th>Date</th><th>Store</th><th>Activity</th><th>Qty</th></tr></thead><tbody>${ev.slice().sort((a,b)=>b.date.localeCompare(a.date)||b.ts-a.ts).slice(0,20).map(x=>`<tr class="r"><td>${esc(mdate(x))}</td><td>${esc(x.type==='in'?x.to:x.from||'-')}</td><td>${x.type==='in'?'Imported':'Sold'}${x.color?' · '+esc(x.color):''}${x.size?' · '+esc(x.size):''}</td><td>${+x.qty||0}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No product sales or imports recorded yet.</div>'}</div>`})()
    +`<h3 style="margin:18px 0 8px">Stock</h3><div class="card"><div class="tw"><table class="sm"><thead><tr><th>Store</th><th>In stock</th></tr></thead><tbody>${per.map(([z,n],i)=>`<tr class="r z${i%2}"><td><b>${esc(z)}</b></td>${qtd(n)}</tr>`).join('')}<tr class="r"><td class="mu">Total</td>${qtd(stock)}</tr></tbody></table></div></div>`
    +(hasVar?`<div class="card"><h3>${isFootwear?'Colors and shoe sizes':'Colors and sizes'}</h3><div class="tw"><table class="sm"><thead><tr><th>Color</th><th>${isFootwear?'Shoe size':'Size'}</th><th>Stores</th><th>Qty</th></tr></thead><tbody>${V.map(v=>`<tr class="r"><td>${esc(v.color||'-')}</td><td>${esc(v.size||'-')}</td><td class="mu">${STORES.filter(z=>v.loc[z]).map(z=>esc(z)+' '+v.loc[z]).join(' · ')||'-'}</td>${qtd(vt(v))}</tr>`).join('')}</tbody></table></div></div>`:'')
    +`<h3 style="margin:18px 0 8px">Details</h3><div class="pg">${pr('Article',p.art)+pr('SKU',p.sku)+pr('Barcode',p.bc)+pr('Brand',p.brand)+pr('Category',p.cat)}</div>`
@@ -1977,8 +2037,8 @@ function rebuildVariantLookup(){
  const add=(map,key,v)=>{if(!key)return;if(!map.has(key))map.set(key,v);else if(map.get(key)&&map.get(key).k!==v.k)map.set(key,null);};
  const addList=(map,key,v)=>{if(!key)return;const a=map.get(key)||[];a.push(v);map.set(key,a);};
  for(const v of Object.values(STK||{})){
-  if(v.bc)add(_variantByBarcode,String(v.bc));
-  if(v.productId)add(_variantByProductId,String(v.productId));
+  if(v.bc)add(_variantByBarcode,String(v.bc),v);
+  if(v.productId)add(_variantByProductId,String(v.productId),v);
   const sz=String(v.size||''),cl=String(v.color||'');
   if(v.sku){add(_variantBySkuColorSize,[v.sku,cl,sz].join('|').toLowerCase(),v);addList(_variantBySku,String(v.sku),v);}
   if(v.art){add(_variantByArticleColorSize,[v.art,cl,sz].join('|').toLowerCase(),v);addList(_variantByArticle,String(v.art),v);}
@@ -2424,7 +2484,7 @@ document.addEventListener('click',e=>{const t=e.target;
  if(t.matches('img.pic')){openStockBookImage(t.currentSrc||t.src,t.alt||'Product image');return}
  if(t.matches('.product-main-photo')){openStockBookImage(t.currentSrc||t.src,t.alt||'Product image');return}
  if(t.closest('#p-print')){window.print();return}
- const th=t.closest('[data-th],[data-dn],[data-sh],[data-fx],[data-lang]');if(th){if(th.dataset.th)setTheme(th.dataset.th,true);if(th.dataset.dn)setLook('dens',th.dataset.dn);if(th.dataset.sh)setLook('shape',th.dataset.sh);if(th.dataset.fx)setLook('fx',th.dataset.fx);if(th.dataset.lang)setLanguage(th.dataset.lang);$('#fly').innerHTML=flyHtml();return}
+ const th=t.closest('#fly [data-th],#fly [data-dn],#fly [data-sh],#fly [data-fx],#fly [data-lang]');if(th){if(th.dataset.th)setTheme(th.dataset.th,true);if(th.dataset.dn)setLook('dens',th.dataset.dn);if(th.dataset.sh)setLook('shape',th.dataset.sh);if(th.dataset.fx)setLook('fx',th.dataset.fx);if(th.dataset.lang)setLanguage(th.dataset.lang);$('#fly').innerHTML=flyHtml();return}
  if(t.closest('#lo-all')){const b=t.closest('#lo-all');if(b)b.disabled=true;(async()=>{try{const user=auth.currentUser;if(!user)throw new Error('No active account.');const token=await user.getIdToken(),r=await fetch('/.netlify/functions/revoke-sessions',{method:'POST',headers:{Authorization:'Bearer '+token}}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Server could not revoke sessions.');await signOut(auth)}catch(err){console.error('Stock Book all-device sign-out failed:',err);const loginErr=$('#le');if(loginErr)loginErr.textContent='Could not log out other devices: '+(err&&err.message||'check Netlify environment variables');if(b)b.disabled=false}})();return}
  if(t.closest('#lo')){const b=t.closest('#lo');if(b)b.disabled=true;signOut(auth).catch(err=>{console.error('Stock Book sign-out failed:',err);const loginErr=$('#le');if(loginErr)loginErr.textContent='Could not log out: '+(err&&err.message||'check your connection');if(b)b.disabled=false});return}
  if(t.id==='dlg'||t.closest('[data-dcancel]')){dg=null;renderDlg();return}
@@ -2433,6 +2493,7 @@ document.addEventListener('click',e=>{const t=e.target;
  if(t.closest('#rcsv')){repCsv();return}
  const rp=t.closest('[data-rper]');if(rp){rP=rp.dataset.rper;rO=0;render();return}
  const rn=t.closest('[data-rnav]');if(rn){rO=Math.min(0,rO+(+rn.dataset.rnav));render();return}
+ const prp=t.closest('[data-preport]');if(prp){sendProductReport(prp.dataset.preport,prp);return}
  const pp=t.closest('[data-prod]');if(pp){pk=pp.dataset.prod;pMode='view';pAdd={};pPhoto='';pMsg=['',0];renderPnl(true);return}
  if(t.closest('#p-export')){const p=pk&&TREE.find(x=>x.k===pk);if(!p)return;const rows=[['Date','Activity','Store','To store','Product','SKU','Article','Barcode','Brand','Color','Size','Quantity','Note','Recorded by'],...pMoves(p).filter(x=>!x.del&&!x.ns&&['in','out','move','rem'].includes(x.type)).sort((a,b)=>String(mdate(a)).localeCompare(String(mdate(b)))||a.ts-b.ts).map(x=>[mdate(x),({in:'Import',out:'Sale',move:'Transfer',rem:'Removal'})[x.type]||x.type,x.from||'',x.to||'',x.name||p.name,x.sku||p.sku,x.art||p.art,x.bc||p.bc,x.brand||p.brand,x.color||'',x.size||'',+x.qty||0,x.note||'',x.by||''])];if(typeof XLSX==='undefined'){alert('Excel library is still loading. Please try again.');return}const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),'Product history');XLSX.writeFile(wb,(p.name||p.sku||p.art||'product').replace(/[^a-z0-9-_]+/gi,'_')+'-history.xlsx');return}
  if(t.closest('[data-pclose]')){pk='';pMode='view';renderPnl();return}
