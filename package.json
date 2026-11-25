@@ -1,6 +1,6 @@
 {
   "name": "stock-book-netlify",
-  "version": "1.8.5",
+  "version": "1.8.6",
   "private": true,
   "description": "Stock Book main management system with environment-configured Firebase, BILLZ sync, Smart Retail Intelligence and Telegram Mini App on Netlify",
   "dependencies": {

@@ -742,12 +742,42 @@ const today=()=>iso(new Date());
 const fdt=ts=>{const d=new Date(ts);return pad(d.getDate())+'.'+pad(d.getMonth()+1)+'.'+d.getFullYear()+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())};
 const tnm=(t,ts)=>{const d=new Date(ts);return ({in:'Import ',out:'Sale ',rem:'Removal '}[t]||'Transfer ')+d.getFullYear()+'.'+pad(d.getMonth()+1)+'.'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes())};
 const ln=l=>l==='Main'?'Main place (old records)':l;
-const vk=x=>[x.sku||x.art||x.bc||(x.productId?'id:'+String(x.productId):''),x.color||'',x.size||''].join('|').toLowerCase();
+const vkRaw=x=>[x.sku||x.art||x.bc||(x.productId?'id:'+String(x.productId):''),x.color||'',x.size||''].join('|').toLowerCase();
+/* STOCK FIX 1.8.6: the same physical variant can arrive with different identifiers (an import carries SKU/article,
+   a sale may carry only the BILLZ product id or barcode). vk() used to give each spelling its own stock row, so a sale
+   was booked on another row and the imported row never went down (import 20, sell 10 -> still 20; import 15 -> 35).
+   buildVkAlias() links every spelling that shares a product id, barcode or SKU+color+size to ONE canonical key. */
+let _vkAlias={};
+const vk=x=>{const r=vkRaw(x);return _vkAlias[r]||r};
+function buildVkAlias(list){
+ const par=new Map(),find=a=>{let r=a;while(par.get(r)!==r&&par.has(r))r=par.get(r);while(a!==r){const n=par.get(a);par.set(a,r);a=n}return r},
+  add=a=>{if(!par.has(a))par.set(a,a);return a},uni=(a,b)=>{a=find(add(a));b=find(add(b));if(a!==b)par.set(b,a)},
+  nm=v=>String(v==null?'':v).trim().toLowerCase().replace(/[’‘`ʻʼ]/g,"'"),rows=[];
+ for(const x of list){
+  if(!x||!(x.sku||x.art||x.bc||x.productId||x.product_id))continue;
+  const rk=vkRaw(x),pid=x.productId||x.product_id,sk=nm(x.sku||x.art),tk=['k:'+rk];
+  if(pid)tk.push('i:'+String(pid));
+  if(x.bc)tk.push('b:'+String(x.bc));
+  if(sk)tk.push('s:'+sk+'|'+nm(x.color)+'|'+nm(x.size));
+  tk.forEach(t=>uni(tk[0],t));
+  rows.push({rk,sk,c:nm(x.color),z:nm(x.size),inn:x.type==='in'&&!x.ns})}
+ /* a sale that has an article but no color/size is attached to the ONE imported variant of that article (if unambiguous) */
+ const groups=()=>{const g=new Map();for(const r of rows){const root=find('k:'+r.rk);let o=g.get(root);if(!o)g.set(root,o={rep:r.rk,inn:false,sk:new Set(),c:'',z:''});if(r.inn&&!o.inn){o.inn=true;o.rep=r.rk}if(r.sk)o.sk.add(r.sk);if(r.c)o.c=r.c;if(r.z)o.z=r.z}return g};
+ let g=groups();
+ const inflow=[...g.entries()].filter(([,o])=>o.inn);
+ for(const [root,o] of g){
+  if(o.inn||!o.sk.size||(o.c&&o.z))continue;
+  const cand=inflow.filter(([r2,o2])=>r2!==root&&[...o.sk].some(k=>o2.sk.has(k))&&(!o.c||!o2.c||o.c===o2.c)&&(!o.z||!o2.z||o.z===o2.z));
+  if(cand.length===1)uni(cand[0][0],root)}
+ g=groups();const alias={};
+ for(const r of rows){const o=g.get(find('k:'+r.rk));if(o&&o.rep!==r.rk)alias[r.rk]=o.rep}
+ return alias}
 const SZ=['xxs','xs','s','m','l','xl','xxl','xxxl','2xl','3xl'];
 const szKey=v=>{const t=String(v||'').toLowerCase().trim(),i=SZ.indexOf(t);if(i>=0)return[0,i,''];const n=parseFloat(t);return isNaN(n)?[2,0,t]:[1,n,t]};
 const szCmp=(a,b)=>{const x=szKey(a),y=szKey(b);return x[0]-y[0]||x[1]-y[1]||x[2].localeCompare(y[2])};
 let _lastOrphans=[];
 function stockOf(moves){
+ _vkAlias=buildVkAlias(moves);
  const m={},nsSales=[];
  for(const x of [...moves].reverse()){
   if(x.ns&&!(x.sku||x.art||x.bc||x.productId))continue;
@@ -1174,11 +1204,11 @@ async function readX(file){if(!/\.(xlsx|xls|xlsm|xlsb)$/i.test(file.name))throw 
  return best.a.slice(best.i+1).map((arr,j)=>{const o={_r:best.i+j+2};h.forEach((n,c)=>{for(const g in AL)if(AL[g].includes(n))o[g]=String(arr[c]==null?'':arr[c]).trim()});o.q=ci>=0?Math.round(nn(arr,ci)+nn(arr,ca)-nn(arr,cs)):Math.round(parseFloat(String(o.qty||'').replace(',','.')));if(ci>=0)o.rep=1;return o}).filter(o=>Object.keys(o).some(k=>k!=='_r'&&k!=='q'&&o[k]!==''))}
 const BZ=['НАИМЕНОВАНИЕ','АРТИКУЛ','БАРКОД','КОЛ-ВО','ЦЕНА ПОСТАВКИ (UZS)','РОЗНИЧНАЯ ЦЕНА (UZS)','КАТЕГОРИЯ','БРЕНД','ЕДИНИЦА ИЗМЕРЕНИЯ','ПОСТАВЩИК','ОПИСАНИЕ','ОПТОВАЯ ЦЕНА (UZS)','V_1920205017610','V_Размер','V_Цвет','Под категория','Под категория '];
 const tpl=(cols,name)=>{const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([cols]),'Sheet1');XLSX.writeFile(wb,name)};
-const fpOf=recs=>{const t=recs.map(r=>[r.type,r.from,r.to,r.date,vk(r),r.qty].join('~')).sort().join('|');let h=0;for(const c of t)h=(h*31+c.charCodeAt(0))|0;return recs.length+'.'+h};
+const fpOf=recs=>{const t=recs.map(r=>[r.type,r.from,r.to,r.date,vkRaw(r),r.qty].join('~')).sort().join('|');let h=0;for(const c of t)h=(h*31+c.charCodeAt(0))|0;return recs.length+'.'+h};
 // BILLZ source rows receive deterministic IDs. If a 100-row Firestore batch succeeds and the next
 // batch fails, retrying writes to the same IDs instead of treating the first batch as the whole import.
 const isBillzMovement=r=>!!(r&&(r.bz||r.note==='Billz sync'));
-const billzLineKey=r=>[r.type||'',r.from||'',r.to||'',r.date||'',vk(r),Math.round(+r.qty||0),r.ret?'return':'sale',r.ns?'nonstock':'stock',r.seller||'',r.bz||'',r.note==='Billz sync'?'billz-sales':''].join('~');
+const billzLineKey=r=>[r.type||'',r.from||'',r.to||'',r.date||'',vkRaw(r),Math.round(+r.qty||0),r.ret?'return':'sale',r.ns?'nonstock':'stock',r.seller||'',r.bz||'',r.note==='Billz sync'?'billz-sales':''].join('~');
 const stableHash=value=>{let a=0x811c9dc5,b=0x9e3779b9;for(let i=0;i<value.length;i++){const c=value.charCodeAt(i);a=Math.imul(a^c,0x01000193);b=Math.imul(b^c,0x85ebca6b)}return (a>>>0).toString(16).padStart(8,'0')+(b>>>0).toString(16).padStart(8,'0')};
 const stableGroupId=(prefix,value)=>prefix+'_'+stableHash(String(value));
 function mergeMovesLocally(rows){
@@ -1476,7 +1506,7 @@ let dg=null,dT='',dR='mistake',dNote='';
 function freeRecs(g,t){if(t==='im')return[];const tid=newId(),tname=tnm('out',Date.now());
  return g.items.map(x=>({type:'out',...pick(x),from:x.from,to:'',qty:x.qty,date:today(),note:'Free, from deleted '+g.name,tid,tname,photo:null,free:true}))}
 function breaks(g,t,r){const ids=new Set(g.items.map(x=>x._id)),now=Date.now(),extra=r==='free'?freeRecs(g,t).map((x,i)=>({...x,ts:now+i})).reverse():[],
- before=stockOf(live()),after=stockOf([...extra,...live().filter(x=>!ids.has(x._id))]),bad=[];
+ _al0=_vkAlias,before=stockOf(live()),after=stockOf([...extra,...live().filter(x=>!ids.has(x._id))]),bad=[];_vkAlias=_al0;
  for(const k in after){const s=after[k];for(const z of Object.keys(s.loc)){const a=s.loc[z]||0,b=(before[k]&&before[k].loc[z])||0;if(a<0&&a<b)bad.push((s.name||s.sku||s.art)+' in '+ln(z))}}return bad}
 const NM={tr:'transfer',im:'import',out:'sale',rm:'removal'};
 function renderDlg(){const d=$('#dlg'),g=dg;if(!g){d.hidden=true;d.innerHTML='';return}

@@ -1,0 +1,21 @@
+PROBLEM
+Import 20, sell 10 -> system showed 20 (should be 10). Import 15 more -> showed 35 (should be 25).
+
+CAUSE (index.html, vk() / stockOf())
+Stock rows were keyed by the first identifier found (SKU/article, else barcode, else BILLZ product id) + color + size.
+The import and the sale of the SAME variant can carry different identifiers, so the sale was booked on a different
+row: the imported row never went down and the sale row went negative / was hidden.
+
+FIX (only index.html changed)
+1. vk() is now alias-aware. buildVkAlias() links every spelling of a variant that shares a BILLZ product id,
+   a barcode, or SKU/article + color + size into ONE canonical stock row. stockOf() builds it on every recalculation.
+2. A sale that has an article/SKU but no color/size is attached to the imported variant only if that article has
+   exactly ONE imported variant. If it is ambiguous it is NOT guessed (it stays visible as a negative row).
+3. vkRaw() keeps the old raw key for billzLineKey() and fpOf(), so duplicate-protection IDs of existing Firestore
+   records do not change. No data is rewritten or deleted.
+4. breaks() (what-if check before deleting a transfer) restores the alias after its temporary calculations.
+
+AFTER DEPLOY
+Replace index.html and hard-refresh (Ctrl+F5). Stock is recalculated from existing records in the browser,
+so old sales are corrected immediately; no re-sync is required. Negative rows that remain after the fix are real
+unmatched sales (ambiguous article with no size/color/barcode).
