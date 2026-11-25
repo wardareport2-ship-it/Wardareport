@@ -1,3 +1,3 @@
-Warda Stock Book 1.8.6 (25 Nov 2026)
-Fix: remaining stock now = imports - sales (+returns) even when the sale and the import carry different identifiers.
-See CHANGES-2026-11-25-STOCK-REMAINING-FIX.txt
+Warda Stock Book 1.8.8 (25 Nov 2026)
+1.8.6: remaining stock = imports - sales even when sale and import carry different identifiers.
+1.8.8: BILLZ > Advanced BILLZ tools > "DELETE ALL DATA and start fresh from BILLZ" (permanent, no archive).

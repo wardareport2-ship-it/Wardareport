@@ -1,0 +1,16 @@
+NEW BUTTON: BILLZ > Advanced BILLZ tools > "DELETE ALL DATA and start fresh from BILLZ"
+
+1. Downloads a backup JSON first (stock-book-full-backup-before-delete-all-DATE.json). Keep it.
+2. PERMANENTLY deletes every document in the Firestore "moves" collection: imports, sales, transfers, write-offs,
+   product catalog (billzmeta*, billzvariants*), photos, sync status. Nothing goes to the Deleted tab.
+   Kept on purpose: auth_revoke_* (login-session logout markers) and billz_auto_lock (auto-sync lock).
+3. Clears the copy stored in this browser (IndexedDB stockbook-local-cache-v1). This copy is why products
+   kept showing after moves was deleted in the Firebase console: the app shows the last saved local copy first.
+4. Loads the complete BILLZ catalog and categories again from scratch.
+5. Syncs imports, transfers, write-offs and sales from the chosen start date to today, 31 days at a time.
+
+Confirm word: DELETE ALL.  If deleting says permission-denied, the Firebase rules block deletes from the app.
+Other devices/browsers keep their own local copy until they open the app once and receive the empty database
+(or clear site data).
+Limits: stock = BILLZ imports - sales +/- transfers from the start date. Pieces that never came in as a BILLZ import
+are missing. Not tested against live Firebase/BILLZ.

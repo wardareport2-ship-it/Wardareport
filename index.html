@@ -648,6 +648,13 @@ html[data-fx="off"] :is(.stile,.dr-fin-card):hover{transform:none}
    <p class="mu" id="rpm" style="margin-top:8px" aria-live="polite"></p><div id="rpo"></div>
   </details>
   <details style="margin-top:16px;border-top:1px solid var(--bd);padding-top:12px">
+   <summary style="cursor:pointer;font-weight:750">DELETE ALL DATA and start fresh from BILLZ</summary>
+   <p class="mu"><b>Permanent.</b> Deletes every record in the database: imports, sales, transfers, write-offs, the product catalog (products, colors, sizes, categories, photos), the sync status and the saved copy in this browser. Nothing is kept in the Deleted tab. A backup file downloads first (keep it). Then it loads the BILLZ catalog and categories again from scratch and syncs all imports, transfers, write-offs and sales from the start date, month by month. Use the date of your very first import in BILLZ. Pieces that never came in as a BILLZ import will be missing. Login sessions are not touched.</p>
+   <div class="row3" style="margin-top:10px"><div><label>Start date (very first import)</label><input id="bzaf" type="date"></div><div><label>Type DELETE ALL to confirm</label><input id="bzac" autocomplete="off"></div></div>
+   <div class="xl" style="margin-top:12px"><button class="btn dng" id="bzar" disabled>Delete everything and start fresh</button></div>
+   <p class="mu" id="bzam" style="margin-top:8px" aria-live="polite"></p>
+  </details>
+  <details style="margin-top:16px;border-top:1px solid var(--bd);padding-top:12px">
    <summary style="cursor:pointer;font-weight:750">Careful: start fresh from BILLZ</summary>
    <p class="mu">Clean rebuild for a new BILLZ account: first refresh the complete BILLZ catalog, then archive active stock movements (they remain in Deleted), load BILLZ stock as the opening balance, and re-sync transactions from your chosen date. A full JSON backup including product photos is downloaded first. Existing catalog settings and non-stock records are kept. Review the preview before continuing.</p>
    <div class="row3" style="margin-top:10px"><div><label>Billz is the source from this date</label><input id="bzfs" type="date"></div></div>
@@ -1922,6 +1929,40 @@ async function bzFreshPrepare(){
   if(bzPlan.ok){const c=$('#bzfc'),b=$('#bzfr');c.oninput=()=>{b.disabled=c.value.trim().toUpperCase()!=='RESET'};b.onclick=bzFreshRun}}
  catch(e){out.innerHTML='<p class="bad">'+esc(e.message||String(e))+'</p>'}
  bzBusy=false}
+async function bzWipeAll(){
+ const m=$('#bzam'),b=$('#bzar'),say=(t,bad)=>{m.textContent=t;m.className=bad?'bad':'mu'},
+  addDays=(d,n)=>{const x=new Date(d+'T00:00:00');x.setDate(x.getDate()+n);return iso(x)},start=$('#bzaf').value,
+  keep=id=>/^auth_revoke_/.test(id||'')||id==='billz_auto_lock';
+ if(!start){say('Choose the start date (the date of your very first import).',1);return}
+ if(start>today()){say('The start date is in the future.',1);return}
+ if(bzBusy){say('Another BILLZ task is running or got stuck. Refresh the page (Ctrl+F5) and try again.',1);return}
+ bzBusy=true;b.disabled=true;let wiped=false;
+ try{
+  const all=moves.filter(x=>x&&x._id&&!keep(x._id));
+  say('Step 1 of 5: saving a backup file…');
+  const backup={format:'Stock Book full backup before delete-all',version:2,exportedAt:new Date().toISOString(),firebaseProject:firebaseConfig.projectId,records:moves};
+  const bk=new Blob([JSON.stringify(backup)],{type:'application/json'}),a=document.createElement('a');
+  a.href=URL.createObjectURL(bk);a.download='stock-book-full-backup-before-delete-all-'+today()+'.json';document.body.appendChild(a);a.click();a.remove();
+  await new Promise(r=>setTimeout(r,1500));
+  say('Step 2 of 5: permanently deleting '+all.length+' records…');
+  for(let i=0;i<all.length;i+=400){const w=writeBatch(fs);all.slice(i,i+400).forEach(x=>w.delete(doc(fs,'moves',x._id)));await w.commit();wiped=true;say('Step 2 of 5: deleted '+Math.min(i+400,all.length)+' of '+all.length+' records…')}
+  for(const x of all)_movesById.delete(x._id);
+  moves=moves.filter(x=>keep(x._id));_bs=null;_renderModelSource=null;
+  try{const db=await stockCacheOpen();try{await new Promise((res,rej)=>{const tx=db.transaction('snapshots','readwrite');tx.objectStore('snapshots').clear();tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}finally{db.close()}}catch(e){console.warn('Local cache not cleared:',e)}
+  refreshRenderModel(true);try{render()}catch(e){}
+  say('Step 3 of 5: loading the complete BILLZ catalog and categories from scratch…');
+  bzBusy=false;await bzProducts();
+  if(!($('#bzpo').textContent||'').trim().startsWith('Done:'))throw new Error('The BILLZ catalog did not finish. All old data is already deleted: fix the problem, then press Sync (From = '+start+').');
+  const end=today();let from=start,probs=0,chunks=0;
+  while(from<=end){const e1=addDays(from,30),to=e1<end?e1:end;
+   say('Step 4 of 5: syncing BILLZ '+from+' → '+to+' (up to '+end+')…');
+   $('#bzf').value=from;$('#bzt').value=to;await bzSync(false);chunks++;
+   probs+=$('#bzlog').querySelectorAll('.bad').length;from=addDays(to,1)}
+  const d=new Date();d.setDate(d.getDate()-7);$('#bzf').value=iso(d);$('#bzt').value=end;
+  say(probs?'Step 5 of 5: finished with '+probs+' warning(s) in '+chunks+' sync period(s). Check the Sync log, then run the sync again for any period that failed.':'Done: everything was deleted, then the BILLZ catalog and all data from '+start+' were loaded again.',probs?1:0);
+ }catch(e){console.error(e);say('Stopped: '+((e&&(e.code||e.message))||'unknown')+'. '+(wiped?'Deletion already happened (backup file downloaded). Refresh the page and press Sync from '+start+' to continue.':'Nothing was deleted. If this says permission-denied, your Firebase rules do not allow deleting records from the app.'),1)}
+ finally{bzBusy=false;b.disabled=$('#bzac').value.trim().toUpperCase()!=='DELETE ALL'}
+}
 async function bzFreshRun(){
  if(bzBusy||!bzPlan||!bzPlan.ok)return;
  const b=$('#bzfr'),m=$('#bzfm'),say=t=>{m.textContent=t},allBtn=$('#bzallgo');
@@ -2326,7 +2367,7 @@ async function bzAutoOnce(){
 (()=>{const d=new Date();d.setDate(d.getDate()-7);let last='',au='0';try{last=localStorage.getItem('bzLast')||'';au=localStorage.getItem('bzAuto')||'0'}catch(e){}
  $('#bzf').value=iso(d);$('#bzt').value=today();$('#bza').value=au;if(last)$('#bzst').textContent='Last sync: '+new Date(last).toLocaleString('en-GB');
  $('#bza').onchange=()=>{try{localStorage.setItem('bzAuto',$('#bza').value)}catch(e){}};
- $('#bzallgo').onclick=()=>bzSyncAll(false);$('#bzck').onclick=bzCheck;$('#bzfs').value=today();$('#bzfp').onclick=bzFreshPrepare;$('#bzpb').onclick=()=>{if(!bzBusy)bzProducts()};
+ $('#bzallgo').onclick=()=>bzSyncAll(false);$('#bzck').onclick=bzCheck;$('#bzfs').value=today();$('#bzfp').onclick=bzFreshPrepare;{const c=$('#bzac'),bt=$('#bzar'),df=$('#bzaf');if(c&&bt){const d0=new Date();d0.setFullYear(d0.getFullYear()-2);if(df)df.value=iso(d0);c.oninput=()=>{bt.disabled=c.value.trim().toUpperCase()!=='DELETE ALL'};bt.onclick=bzWipeAll}}$('#bzpb').onclick=()=>{if(!bzBusy)bzProducts()};
  setInterval(()=>{if($('#bza').value==='1'&&auth&&auth.currentUser)bzAutoOnce()},10*60*1000)})();
 
 /* ---------- Billz files: auto-detect and open the right screen ---------- */
