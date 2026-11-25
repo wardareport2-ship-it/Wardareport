@@ -1,0 +1,20 @@
+FIXES APPLIED (25 Nov 2026)
+
+1. server.mjs  CRITICAL: gzipSync was used but never imported. The error was swallowed by a
+   catch block and returned "404 Not found" for index.html and /tg/ to every browser that
+   sends Accept-Encoding: gzip (all of them). Added the import.
+2. server.mjs  PERFORMANCE: files are now read and gzipped once, cached in memory and
+   re-checked by modified time (before: the 470 KB page would be read and compressed on
+   every request). Real errors are now logged instead of hidden as 404.
+3. index.html  PERFORMANCE: the 2 render-blocking XLSX <script> tags (~900 KB) now load in
+   the background with the jsDelivr fallback kept. Excel import/export is unchanged.
+4. package.json version aligned to 1.8.4.
+
+NOT CHANGED / STILL TO KNOW
+- scripts/preflight-integrated.mjs and test-netlify-miniapp.mjs fail because they check for
+  things this version does not have (legacyFrame, Netlify /tg redirect). They are outdated
+  tests, not app bugs.
+- Root files telegram-report-core.cjs, tg-dashboard.mjs, telegram-setup.js, billz.js are OLD
+  copies. The server and Netlify use netlify/lib and netlify/functions. Edit only those.
+- legacy-app.html is not served by the server.
+- Live Firebase / BILLZ / Supabase / Telegram could not be tested here (no credentials/network).

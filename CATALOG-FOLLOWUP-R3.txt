@@ -1,0 +1,14 @@
+CATALOG FOLLOW-UP R3 — 2026-11-18
+
+1. Catalog defaults to In stock. Products at zero stock leave this default view automatically and remain in Sold out and All products. No product record or historical stock movement is deleted.
+2. Slow-moving is a separate catalog view. It lists products with positive Stock Book stock and no positive recorded sales in the selected 30, 60, 90 or 180 day window. It shows last sale date, days since last sale, remaining pieces and never-sold count.
+3. The slow-moving calculation uses active, non-deleted, positive sales movements (not returns, free removals or unmatched non-stock sales). It respects the selected store filter.
+4. Successful saved/synced movement batches are now merged into the local UI state immediately after Firestore confirms the write. This makes catalog stock recalculate without waiting for the Firestore listener. The Firestore listener remains authoritative and reconciles the view.
+5. Stock is calculated from Stock Book movement history. If a BILLZ sale does not sync or cannot be matched confidently to a product variant, that line cannot update the variant's Stock Book quantity. Run full BILLZ sync and Compare stock with BILLZ. Never delete sold-out products just to hide them, because that would erase their place in the product history.
+
+DEPLOY SAFELY
+- Deploy to a staging Netlify site first.
+- Keep existing environment variables and database projects unchanged.
+- Test a known SKU: record its current stock, add a test sale using an approved test record, confirm the quantity decreases immediately, and confirm the product moves into Sold out only when its balance reaches zero.
+- Test Slow-moving with known products across all stores and each available date window.
+- Run BILLZ full sync and Compare stock with BILLZ. Do not publish to production until discrepancies are reviewed.

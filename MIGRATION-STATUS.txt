@@ -1,0 +1,33 @@
+WARDA STOCK BOOK MIGRATION + BI UPDATE — 25 NOV 2026
+
+Base archive: StockBook-Netlify-v1.8.4-Redirect-Loop-Fix.zip
+
+Additions in this package:
+- Docker/VPS deployment adapter, compose config and environment template.
+- Business Intelligence overview in main Stock Book Analytics section:
+  Sales Performance, Product Intelligence, Financial Intelligence and
+  internal Market Intelligence signals.
+- Separate category demand/stock rows for Clothing, Shoes, Accessories,
+  Cosmetics, Hair and Other.
+- Professional Analytics Light default, Analytics Dark, Finance and Retail BI
+  palettes, plus the existing preset collection and custom theme upload.
+
+Checks performed:
+- Inline application JavaScript syntax check with Node.js: PASSED.
+- `node --check server.mjs`: PASSED.
+- `node scripts/test-smart-retail.mjs`: PASSED (returns, slow stock, restock,
+  transfer, stock valuation, branch filter and all-time last-sale date).
+- `node scripts/preflight-integrated.mjs`: FAILED because the base app does not
+  contain the legacy test fixture `id="legacyFrame"`; the test expects a UI
+  container not used by this app version.
+- `node scripts/test-netlify-miniapp.mjs`: FAILED because it expects a Netlify
+  `/tg` redirect in netlify.toml. The VPS server adapter routes `/tg` itself.
+  This Netlify-specific assertion is not a VPS route test.
+- ZIP integrity check: PASSED.
+- Live BILLZ, Firebase, Supabase and Telegram credentials are not available in
+  this build environment, so live integration checks remain outstanding.
+
+Status:
+This is a staging migration package with BI/theme enhancements, NOT a verified
+production deployment. Do not change production DNS or the Telegram webhook
+until the VPS staging checklist and live integration tests pass.

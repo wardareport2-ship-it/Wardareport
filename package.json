@@ -1,0 +1,19 @@
+{
+  "name": "stock-book-netlify",
+  "version": "1.8.4",
+  "private": true,
+  "description": "Stock Book main management system with environment-configured Firebase, BILLZ sync, Smart Retail Intelligence and Telegram Mini App on Netlify",
+  "dependencies": {
+    "firebase-admin": "^13.5.0"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "preflight:integrated": "node scripts/preflight-integrated.mjs",
+    "test:smart-retail": "node scripts/test-smart-retail.mjs",
+    "test:netlify-miniapp": "node scripts/test-netlify-miniapp.mjs",
+    "preflight:all": "npm run preflight:integrated && npm run test:smart-retail && npm run test:netlify-miniapp"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

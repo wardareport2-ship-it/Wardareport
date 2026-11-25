@@ -1,0 +1,60 @@
+STOCK BOOK v1.8.4 — DIRECT NETLIFY DEPLOYMENT (NO GITHUB / NO RENDER)
+
+This bundle is intended for the existing Netlify site only.
+
+IMPORTANT
+- The root index.html is included and is a copy of the supplied legacy-app.html entrypoint.
+- The Mini App page is /tg/index.html, served at /tg/ on the same Netlify domain.
+- Netlify Functions are in netlify/functions and netlify.toml declares this folder.
+- Keep the extracted project root intact. Do not deploy only tg/ or only index.html.
+
+DIRECT NETLIFY UI ROUTE
+1. Sign in to the Netlify account/team that owns the existing Stock Book site.
+2. Open the existing app/site (the correct production Stock Book domain).
+3. Use the app's New version / Drop a new version flow for the existing app, or the site's Production deploy drag-and-drop area.
+4. Upload the extracted project folder contents (or the ZIP where the Drop UI explicitly accepts ZIP uploads).
+5. If using Agent Runs, tell the agent: "Apply the uploaded project as the complete site source. Preserve all files at project root, including index.html, netlify.toml, netlify/functions/, and tg/index.html. Do not recreate a mock app. Prepare a preview and do not publish until I review it."
+6. Preview the deployment before publishing.
+
+NETLIFY CONFIGURATION
+- Build command: npm install
+- Publish directory: .
+- Functions directory: netlify/functions
+- Node version: 22 (declared in netlify.toml)
+
+ENVIRONMENT VARIABLES
+Keep the existing values already used by the site. Required integrations include:
+- BILLZ_TME_KEY
+- TELEGRAM_BOT_TOKEN
+- SUPABASE_URL
+- SUPABASE_SERVICE_ROLE_KEY
+- FIREBASE_API_KEY
+- FIREBASE_AUTH_DOMAIN
+- FIREBASE_PROJECT_ID
+- FIREBASE_STORAGE_BUCKET
+- FIREBASE_MESSAGING_SENDER_ID
+- FIREBASE_APP_ID
+- FIREBASE_SERVICE_ACCOUNT_JSON (server-side only, where all-device session revocation is enabled)
+
+DATABASE SETUP
+Run SUPABASE-TELEGRAM-SCHEMA.sql once in the existing Supabase project's SQL Editor if individual Telegram invitations have not already been initialized. Do not create a new Supabase or Firebase project.
+
+AFTER DEPLOYMENT
+1. Main system: https://YOUR-SITE.netlify.app/
+2. Mini App: https://YOUR-SITE.netlify.app/tg/
+3. Webhook function: https://YOUR-SITE.netlify.app/.netlify/functions/telegram-bot
+4. Dashboard function is POST-only; a GET test may respond 405. It must not return Netlify's site 404.
+5. Only after /tg/ loads and the functions are present, open Stock Book → Telegram/Reports → Access Management and use Enable Dashboard once.
+
+TELEGRAM
+- One bot can have only one active webhook. Configure it to this Netlify site only.
+- Do not configure this bot on Render or another Netlify site at the same time.
+- Private /start should send the Dashboard button to approved individuals.
+- Group access and individual username invitations remain separate access paths.
+
+SECURITY
+- Never upload .env values, Telegram tokens, BILLZ keys, Supabase service-role key, or Firebase service-account JSON into a public file or client-side code.
+- Keep existing site environment variables. Do not replace production secrets unnecessarily.
+
+LIMITATIONS
+- The package has not been deployed against the user's live Netlify/Firebase/BILLZ/Supabase/Telegram accounts. Verify the live routes, functions, authentication and reconciliation before relying on it in production.

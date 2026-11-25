@@ -1,0 +1,59 @@
+STOCK BOOK v1.8.3 — NETLIFY DEPLOYMENT CHECKLIST
+
+ARCHITECTURE
+- Main Stock Book: Netlify site root (/)
+- Telegram Mini App: same Netlify site at /tg/
+- Telegram webhook: /.netlify/functions/telegram-bot
+- Dashboard API: /.netlify/functions/tg-dashboard
+- Supabase: existing project, same URL and service-role key
+- Firebase/BILLZ: keep the existing integration and environment variables
+- Do not configure this bot on Render. Telegram has one active webhook per bot.
+
+BEFORE DEPLOY
+1. Extract the ZIP. Keep the extracted project root intact; do not deploy only index.html or only tg/.
+2. In Netlify, preserve the existing environment variables and add/copy the latest values if missing:
+   BILLZ_TME_KEY
+   TELEGRAM_BOT_TOKEN
+   SUPABASE_URL
+   SUPABASE_SERVICE_ROLE_KEY
+   Firebase Web App variables (use the same existing Firebase project):
+   FIREBASE_API_KEY
+   FIREBASE_AUTH_DOMAIN=system-proof.firebaseapp.com
+   FIREBASE_PROJECT_ID=system-proof
+   FIREBASE_STORAGE_BUCKET=system-proof.firebasestorage.app
+   FIREBASE_MESSAGING_SENDER_ID=398851511707
+   FIREBASE_APP_ID=1:398851511707:web:b6e00db7bd409f074ebd3e
+   FIREBASE_SERVICE_ACCOUNT_JSON (server-only; required for all-device session revocation).
+   The ZIP includes .env.example with these variable names. The public Firebase web config is returned by /.netlify/functions/firebase-config; Admin credentials are never exposed to the browser.
+3. Never put bot tokens, Supabase service-role keys, Firebase service-account JSON or .env files in GitHub.
+4. In the EXISTING Supabase project, open SQL Editor and run SUPABASE-TELEGRAM-SCHEMA.sql once. It creates/retains the current report/cache tables and adds stock_book_telegram_users. The script is idempotent; it does not delete existing report data.
+5. Build settings: npm install; publish directory .; functions directory netlify/functions. netlify.toml already specifies these and Node 22.
+
+AFTER DEPLOY
+1. Open https://YOUR-SITE.netlify.app/ and check sign-in and main navigation.
+2. Open https://YOUR-SITE.netlify.app/tg/; this must load the Mini App page (outside Telegram it may say it needs Telegram authentication).
+3. GET https://YOUR-SITE.netlify.app/.netlify/functions/tg-dashboard may return 405 because the API is POST-only; it must not return a Netlify 404.
+4. In Stock Book → Reports → Access Management, connect/save the existing private group if you use group access.
+5. To add an individual, enter their exact Telegram @username and click Add individual. Ask them to open @wardareport2026_bot and press Start privately. The bot will link their Telegram user ID and send a private Dashboard button. Approved individual users can access all four branches.
+6. Click Enable Dashboard once on the intended Netlify site. It configures this site as the bot's webhook and Mini App menu destination.
+7. Verify in Telegram: send /start privately; the bot should send an inline Dashboard button. Test with an authorized account and an unauthorized account.
+
+ACCESS NOTES
+- Group membership and individual invitations are separate routes to the same four-branch dashboard.
+- Removing an individual entry revokes individual access. If that person remains in the connected group, group membership continues to grant access; remove them from the group too to revoke all access.
+- Individual invitations are unlimited by application policy, subject to normal Supabase storage limits.
+- Telegram usernames must be valid and present when the invited user presses Start. If their username is changed before linking, update the invitation to the current username.
+
+FUNCTIONAL TEST CHECKLIST
+Use a staging deploy or test records before production:
+- Sign in/out; main navigation; global search and store selector.
+- Catalog search/filter/variant expansion/product detail/image preview.
+- Import, sale, return, transfer and write-off forms (use test records first).
+- BILLZ sync, stock comparison, reports and Smart Retail Intelligence.
+- Mini App period tabs, comparison, branch filters, refresh and photo zoom.
+- Telegram group access and individual invitation flow.
+- Cash/card totals and returns reconciled against BILLZ for a known date/store.
+
+LIMITS
+- Automated source-level tests pass, but the project has not been connected to your live private Firebase, BILLZ, Supabase or Telegram accounts in this environment. Live integration must be verified after deployment.
+- The test suite checks button/action wiring and syntax; it cannot guarantee every button on your production data and browser session until you test the deployed app.

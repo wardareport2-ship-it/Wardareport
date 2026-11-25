@@ -1,0 +1,19 @@
+Stock Book Netlify v1.8.4 — Redirect Loop Hotfix
+
+Root cause found in the supplied package:
+netlify.toml forced /tg -> /tg/ with status 301. Netlify normalizes trailing-slash paths for redirect matching, so forcing this redirect can create an infinite redirect loop.
+
+Fix:
+Removed the forced /tg -> /tg/ redirect. Netlify serves the Mini App from tg/index.html using its normal directory/pretty-URL handling.
+
+Deploy this package to the EXISTING Netlify site reporwarda. Keep the existing environment variables unchanged. Do not create a new site and do not change the Telegram bot token/webhook manually.
+
+After deploy, test in this order:
+1. https://reporwarda.netlify.app/
+2. https://reporwarda.netlify.app/tg/
+3. https://reporwarda.netlify.app/.netlify/functions/telegram-bot (GET may return 405; that is expected because Telegram webhook uses POST)
+4. Open @wardareport2026_bot and press /start; the Dashboard button should open /tg/.
+
+If ERR_TOO_MANY_REDIRECTS remains after the new deploy, inspect Netlify domain settings and any domain-level redirect rules. Also test in a private/incognito window. Do not delete browser cookies as a substitute for fixing the server-side redirect rule.
+
+No live site, Firebase, Supabase data, bot token, or Telegram webhook was modified by this package preparation.

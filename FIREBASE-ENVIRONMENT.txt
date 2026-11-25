@@ -1,0 +1,45 @@
+STOCK BOOK — FIREBASE NETLIFY ENVIRONMENT SETUP (v1.8.3)
+
+Use the EXISTING Firebase project currently used by Stock Book.
+Do not create another Firebase project and do not change Firestore data.
+
+A) Firebase Web App configuration (browser-safe configuration)
+Add these variables in Netlify → Site configuration → Environment variables:
+
+FIREBASE_API_KEY
+FIREBASE_AUTH_DOMAIN=system-proof.firebaseapp.com
+FIREBASE_PROJECT_ID=system-proof
+FIREBASE_STORAGE_BUCKET=system-proof.firebasestorage.app
+FIREBASE_MESSAGING_SENDER_ID=398851511707
+FIREBASE_APP_ID=1:398851511707:web:b6e00db7bd409f074ebd3e
+
+Get FIREBASE_API_KEY from Firebase Console → Project settings → General → Your apps → Web app → SDK setup and configuration.
+The app now obtains these public values through the same-origin Netlify function:
+/.netlify/functions/firebase-config
+The function returns only the six public Web App config fields. It never returns Firebase Admin credentials.
+
+B) Firebase Admin SDK (server-only secret)
+FIREBASE_SERVICE_ACCOUNT_JSON
+
+This is needed for the main system's "log out from all devices" function. In Firebase Console:
+1. Select the existing Stock Book project (project ID: system-proof).
+2. Open Project settings → Service accounts.
+3. Generate a new private key only if an existing valid service account key is not already available.
+4. In Netlify, paste the entire downloaded JSON content into FIREBASE_SERVICE_ACCOUNT_JSON. Keep the JSON intact; Netlify environment variables can contain multiline values.
+5. Never commit this JSON file or its private_key to GitHub, a ZIP, or client-side HTML. If a key was ever committed publicly, revoke/rotate it immediately.
+
+C) Other required Stock Book variables
+BILLZ_TME_KEY
+TELEGRAM_BOT_TOKEN
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+
+The existing app may also use BILLZ_INT_KEY_2, BILLZ_INT_KEY or BILLZ_SECRET as legacy alternatives. Keep the currently working BILLZ variable; do not create duplicate values unless your integration administrator has intentionally configured them.
+
+D) Important notes
+- FIREBASE_API_KEY is the Firebase Web App API key. It is client configuration and is not a substitute for Firebase Security Rules.
+- FIREBASE_SERVICE_ACCOUNT_JSON is a highly privileged private credential. Server side only.
+- The Netlify function uses FIREBASE_PROJECT_ID to verify that the Admin SDK key belongs to the configured project.
+- No FIREBASE_DATABASE_URL is needed for this Firestore-only configuration.
+- After changing environment variables, trigger a new Netlify deploy so Functions receive the updated values.
+- Test login, Firestore reads/writes and the all-device logout function on a staging deploy before production.

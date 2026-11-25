@@ -1,0 +1,64 @@
+WARDA STOCK BOOK — BUSINESS INTELLIGENCE & THEME UPDATE
+Date: 25 November 2026
+
+MAIN SYSTEM LOCATION
+Open the main Stock Book website and choose Analytics in the left navigation.
+
+FOUR ANALYTICS PILLARS
+1. Sales Performance
+   Uses BILLZ management analytics for net sales revenue, units sold, returns,
+   daily revenue trend, store performance and salesperson performance.
+
+2. Product Intelligence
+   Connects to the existing Smart Retail Intelligence page for product health,
+   slow-moving products, restock watch, transfer suggestions, color/size demand,
+   and physical stock-count audits.
+
+3. Financial Intelligence
+   Uses BILLZ seller/payment reports for gross profit when returned by BILLZ,
+   cash/card/other payments, discounts, returns and revenue. If BILLZ does not
+   return a field, the interface shows it as unavailable rather than inventing it.
+
+4. Market Intelligence
+   Adds an internal demand-trend view: category sales compared with the previous
+   equal-length period, current stock exposure and leading/growing categories.
+   IMPORTANT: This is Warda's own sales/stock signal, not an external competitor
+   market scan. Competitor prices, external market share and third-party trend
+   feeds are not connected in this release.
+
+CATEGORY BREAKDOWN
+The Analytics page separates Clothing, Shoes, Accessories, Cosmetics, Hair and
+Other. Classification uses BILLZ/Stock Book category and product-name metadata.
+Rows show sold units, returns, net units, current stock, products, products
+without recorded sales and change versus the previous equal-length period.
+Category revenue is intentionally not estimated or fabricated when BILLZ does
+not supply a reliable category-level financial breakdown.
+
+THEME MANAGER
+Open Style at the bottom of the left navigation.
+New professional presets:
+- Analytics Light (new default)
+- Analytics Dark
+- Finance
+- Retail BI
+Existing presets remain available, including Indigo, Samarkand, Graphite,
+Midnight, Linen, Rose, Sunset, Ocean, Forest, Plum, Mocha, Mint, Sky, Lavender,
+Gold, Aurora, Obsidian and Pearl.
+A user can also upload a screenshot/image or a theme JSON palette. The theme is
+applied immediately and saved in that browser; changing the theme does not need
+another deployment. Theme preference is browser-specific in this release.
+
+DATA / AI LIMITS
+- Category metrics are based on movements already synchronized/saved in Stock Book.
+- Market signals are internal demand analysis only. External competitor research
+  needs trusted external data sources or user-provided competitor datasets.
+- This release does not activate a live generative-AI provider. Rule-based
+  demand signals and existing stock recommendations are not described as AI.
+  A real AI advisor requires a server-side provider key and a secure API route.
+- Financial category splits are not invented when the BILLZ endpoint does not
+  provide category-level values.
+
+TESTING
+The updated inline application script was syntax-checked with Node.js.
+Live BILLZ, Firebase, Supabase and Telegram integrations still require staging
+verification with the owner's credentials and real test dates/stores.
