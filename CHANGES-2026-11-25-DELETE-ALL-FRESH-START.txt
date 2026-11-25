@@ -14,3 +14,8 @@ Other devices/browsers keep their own local copy until they open the app once an
 (or clear site data).
 Limits: stock = BILLZ imports - sales +/- transfers from the start date. Pieces that never came in as a BILLZ import
 are missing. Not tested against live Firebase/BILLZ.
+
+1.8.9 FIX: the first version froze at "Step 2 of 5: permanently deleting N records…" because every deleted batch made
+the page recalculate stock for ~20,000 records. Now the live listener is stopped during the delete (startMovesListener()),
+deletes run in batches of 300 with a progress counter and a 90 s timeout, and the listener is restarted at the end
+(also if something fails). If it stops, press the button again: it only deletes what is left.

@@ -1,3 +1,4 @@
-Warda Stock Book 1.8.8 (25 Nov 2026)
+Warda Stock Book 1.8.9 (25 Nov 2026)
 1.8.6: remaining stock = imports - sales even when sale and import carry different identifiers.
-1.8.8: BILLZ > Advanced BILLZ tools > "DELETE ALL DATA and start fresh from BILLZ" (permanent, no archive).
+1.8.9: DELETE ALL button no longer freezes: live updates are paused while deleting, progress shows every 300 records,
+       90 s timeout with a clear message, live updates are re-attached afterwards. Safe to press again to continue.

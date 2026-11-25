@@ -1944,11 +1944,17 @@ async function bzWipeAll(){
   const bk=new Blob([JSON.stringify(backup)],{type:'application/json'}),a=document.createElement('a');
   a.href=URL.createObjectURL(bk);a.download='stock-book-full-backup-before-delete-all-'+today()+'.json';document.body.appendChild(a);a.click();a.remove();
   await new Promise(r=>setTimeout(r,1500));
-  say('Step 2 of 5: permanently deleting '+all.length+' records…');
-  for(let i=0;i<all.length;i+=400){const w=writeBatch(fs);all.slice(i,i+400).forEach(x=>w.delete(doc(fs,'moves',x._id)));await w.commit();wiped=true;say('Step 2 of 5: deleted '+Math.min(i+400,all.length)+' of '+all.length+' records…')}
-  for(const x of all)_movesById.delete(x._id);
-  moves=moves.filter(x=>keep(x._id));_bs=null;_renderModelSource=null;
+  say('Step 2 of 5: stopping live updates so the screen does not freeze…');
+  if(_snapshotRenderTimer){clearTimeout(_snapshotRenderTimer);_snapshotRenderTimer=null}
+  if(_cacheSaveTimer){clearTimeout(_cacheSaveTimer);_cacheSaveTimer=null}
+  if(_snapshotUnsub){try{_snapshotUnsub()}catch(_){}_snapshotUnsub=null}
+  const ids=all.map(x=>x._id),tick=()=>new Promise(r=>setTimeout(r,0)),
+   withTimeout=(pr,ms)=>Promise.race([pr,new Promise((_,rej)=>setTimeout(()=>rej(new Error('Firebase did not answer for '+Math.round(ms/1000)+' seconds. Check your internet connection and the Firebase rules, then press the button again: it continues with what is left.')),ms))]);
+  say('Step 2 of 5: permanently deleting '+ids.length+' records…');
+  for(let i=0;i<ids.length;i+=300){const w=writeBatch(fs);ids.slice(i,i+300).forEach(id=>w.delete(doc(fs,'moves',id)));await withTimeout(w.commit(),90000);wiped=true;say('Step 2 of 5: deleted '+Math.min(i+300,ids.length)+' of '+ids.length+' records…');await tick()}
+  _movesById=new Map();_snapshotReady=false;moves=moves.filter(x=>keep(x._id));_bs=null;_renderModelSource=null;
   try{const db=await stockCacheOpen();try{await new Promise((res,rej)=>{const tx=db.transaction('snapshots','readwrite');tx.objectStore('snapshots').clear();tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}finally{db.close()}}catch(e){console.warn('Local cache not cleared:',e)}
+  if(auth.currentUser)startMovesListener(auth.currentUser);
   refreshRenderModel(true);try{render()}catch(e){}
   say('Step 3 of 5: loading the complete BILLZ catalog and categories from scratch…');
   bzBusy=false;await bzProducts();
@@ -1961,7 +1967,7 @@ async function bzWipeAll(){
   const d=new Date();d.setDate(d.getDate()-7);$('#bzf').value=iso(d);$('#bzt').value=end;
   say(probs?'Step 5 of 5: finished with '+probs+' warning(s) in '+chunks+' sync period(s). Check the Sync log, then run the sync again for any period that failed.':'Done: everything was deleted, then the BILLZ catalog and all data from '+start+' were loaded again.',probs?1:0);
  }catch(e){console.error(e);say('Stopped: '+((e&&(e.code||e.message))||'unknown')+'. '+(wiped?'Deletion already happened (backup file downloaded). Refresh the page and press Sync from '+start+' to continue.':'Nothing was deleted. If this says permission-denied, your Firebase rules do not allow deleting records from the app.'),1)}
- finally{bzBusy=false;b.disabled=$('#bzac').value.trim().toUpperCase()!=='DELETE ALL'}
+ finally{if(!_snapshotUnsub&&auth.currentUser)startMovesListener(auth.currentUser);bzBusy=false;b.disabled=$('#bzac').value.trim().toUpperCase()!=='DELETE ALL'}
 }
 async function bzFreshRun(){
  if(bzBusy||!bzPlan||!bzPlan.ok)return;
@@ -3002,28 +3008,7 @@ const populateDatalists=()=>{
  const ids={brand:'#d-brand',cat:'#d-cat',color:'#d-color',size:'#d-size'};
  for(const f of fields){const el=$(ids[f]);if(el)el.innerHTML=[...sets[f]].sort((a,b)=>a.localeCompare(b)).map(v=>`<option value="${esc(v)}">`).join('');}
 };
-let _authEpoch=0;
-onAuthStateChanged(auth,async u=>{
- const epoch=++_authEpoch;
- unsubs.forEach(f=>{try{f()}catch(_){}});unsubs=[];
- if(_snapshotRenderTimer){clearTimeout(_snapshotRenderTimer);_snapshotRenderTimer=null;}
- if(_cacheSaveTimer){clearTimeout(_cacheSaveTimer);_cacheSaveTimer=null;}
- if(_snapshotUnsub){try{_snapshotUnsub()}catch(_){} _snapshotUnsub=null;}
- _movesById=new Map();_snapshotReady=false;moves=[];_renderModelSource=null;
- setLocalCacheNotice('');
- document.body.classList.toggle('in',!!u);$('#login').hidden=!!u;$('#app').hidden=!u;$('#side').hidden=!u;$('#lp').value='';
- if(!u)return;
- me=u.email.split('@')[0];$('#av').textContent=me.slice(0,2).toUpperCase();go('dash');
- // Show the last locally cached snapshot immediately, then reconcile it with Firebase.
- try{
-  const cached=await readStockCache(u.uid);
-  if(epoch!==_authEpoch||!auth.currentUser||auth.currentUser.uid!==u.uid)return;
-  if(cached&&Array.isArray(cached.rows)&&cached.rows.length){
-   moves=cached.rows;_movesById=new Map(cached.rows.filter(x=>x&&x._id).map(x=>[x._id,x]));_renderModelSource=null;
-   populateDatalists();render();setLocalCacheNotice('Showing your last saved data while the latest Firebase records load…');
-  }
- }catch(err){console.warn('Local Stock Book cache unavailable:',err);}
- if(epoch!==_authEpoch||!auth.currentUser||auth.currentUser.uid!==u.uid)return;
+function startMovesListener(u){
  _snapshotUnsub=onSnapshot(collection(fs,'moves'),async snap=>{
   // A server-written marker lets already-open sessions on other devices sign out immediately.
   const revokeDoc=snap.docs.find(d=>d.id==='auth_revoke_'+u.uid);
@@ -3053,6 +3038,30 @@ onAuthStateChanged(auth,async u=>{
   if(moves.length)setLocalCacheNotice('Showing saved local data. Firebase could not refresh it: '+(err&&err.message?err.message:'connection error'));
  });
  unsubs.push(_snapshotUnsub);
+}
+let _authEpoch=0;
+onAuthStateChanged(auth,async u=>{
+ const epoch=++_authEpoch;
+ unsubs.forEach(f=>{try{f()}catch(_){}});unsubs=[];
+ if(_snapshotRenderTimer){clearTimeout(_snapshotRenderTimer);_snapshotRenderTimer=null;}
+ if(_cacheSaveTimer){clearTimeout(_cacheSaveTimer);_cacheSaveTimer=null;}
+ if(_snapshotUnsub){try{_snapshotUnsub()}catch(_){} _snapshotUnsub=null;}
+ _movesById=new Map();_snapshotReady=false;moves=[];_renderModelSource=null;
+ setLocalCacheNotice('');
+ document.body.classList.toggle('in',!!u);$('#login').hidden=!!u;$('#app').hidden=!u;$('#side').hidden=!u;$('#lp').value='';
+ if(!u)return;
+ me=u.email.split('@')[0];$('#av').textContent=me.slice(0,2).toUpperCase();go('dash');
+ // Show the last locally cached snapshot immediately, then reconcile it with Firebase.
+ try{
+  const cached=await readStockCache(u.uid);
+  if(epoch!==_authEpoch||!auth.currentUser||auth.currentUser.uid!==u.uid)return;
+  if(cached&&Array.isArray(cached.rows)&&cached.rows.length){
+   moves=cached.rows;_movesById=new Map(cached.rows.filter(x=>x&&x._id).map(x=>[x._id,x]));_renderModelSource=null;
+   populateDatalists();render();setLocalCacheNotice('Showing your last saved data while the latest Firebase records load…');
+  }
+ }catch(err){console.warn('Local Stock Book cache unavailable:',err);}
+ if(epoch!==_authEpoch||!auth.currentUser||auth.currentUser.uid!==u.uid)return;
+ startMovesListener(u);
 });
 
 // Public bridge for the new Stock Book shell. Business logic remains in this
