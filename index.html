@@ -765,7 +765,9 @@ function stockOf(moves){
  for(const s of Object.values(m)){
   const mm=(s.productId&&M['id:'+s.productId])||(s.bc&&M[s.bc])||(s.sku&&M['sku:'+s.sku])||(s.art&&M['sku:'+s.art]);
   if(mm){if(!s.color&&mm[0])s.color=mm[0];if(!s.photo&&mm[1])s.photo=mm[1];if(!s.size&&mm[2])s.size=mm[2];if(!s.brand&&mm[3])s.brand=mm[3];if(!s.cat&&mm[4])s.cat=mm[4];if(!s.name&&mm[5])s.name=mm[5];if(!s.productId&&mm[8])s.productId=mm[8];if(!s.parent_id&&mm[9]&&mm[9]!=='00000000-0000-0000-0000-000000000000')s.parent_id=mm[9]}
-  s.neg={};for(const z in s.loc)if(s.loc[z]<0){s.neg[z]=s.loc[z];s.loc[z]=0}
+  // Keep signed balances. Clamping each variant/store to zero hides oversold quantities
+  // and makes the product's total stock larger than imports minus sales.
+  s.neg={};for(const z in s.loc)if(s.loc[z]<0)s.neg[z]=s.loc[z];
  }
  // BILLZ's catalog is the source of the complete variant list, including colors currently at zero stock.
  const norm=v=>String(v||'').trim().toLowerCase().replace(/[’‘`ʻʼ]/g,"'"),byBC=new Map(),byID=new Map(),byKey=new Map(),bySku=new Map();
@@ -802,12 +804,10 @@ function stockOf(moves){
    if(!s){const e=byKey.get(vk(x));if(real(e))s=e}
    if(!s){const sk=String(x.sku||x.art||'');if(sk){const c=(bySku.get(sk)||[]).filter(v=>real(v)&&(!x.color||!v.color||norm(v.color)===norm(x.color))&&(!x.size||!v.size||norm(v.size)===norm(x.size)));if(c.length===1)s=c[0]}}
    return s||null};
-  // Undo the temporary clamp to 0 so a variant is judged on its real balance after the extra sales.
-  for(const s of Object.values(m))for(const z in s.neg)s.loc[z]=(s.loc[z]||0)+s.neg[z];
   for(const x of nsSales){const s=resolve(x),q=+x.qty||0;
    if(s){s.loc[x.from]=(s.loc[x.from]||0)-q;(s.outBy=s.outBy||{})[x.from]=(s.outBy[x.from]||0)+q;s.ts=Math.max(s.ts,x.ts||0)}
    else{_lastOrphans.push(x);const k=vk(x),o=m[k]||(m[k]={k,loc:{},ts:0,ph:true,neg:{}});if(o.ph)for(const f of[...FL,'photo'])if(x[f])o[f]=x[f];if(x.parent_id)o.parent_id=x.parent_id;if(x.productId)o.productId=x.productId;o.ts=Math.max(o.ts,x.ts||0)}}
-  for(const s of Object.values(m)){s.neg={};for(const z in s.loc)if(s.loc[z]<0){s.neg[z]=s.loc[z];s.loc[z]=0}}
+  for(const s of Object.values(m)){s.neg={};for(const z in s.loc)if(s.loc[z]<0)s.neg[z]=s.loc[z]}
  }
  return m
 }
